@@ -19,7 +19,7 @@ int main(int argc, char const *argv[]) {
 
     lista  * lista_eventos;
 	int tipo_ev, i; double tempo_ev;
-    double current_time = 0, last_event_time = 0, c, u;
+    double current_time = 0, last_event_time = 0, u;
 
     //  ---------------------------------------------------
     //  ---- Calculate number of bins to the histogram ----
@@ -30,8 +30,6 @@ int main(int argc, char const *argv[]) {
         tmp_n_bins += 1;
     }
     int n_bins = (int)tmp_n_bins;
-
-    printf("%d\n", n_bins);
 
     int count_bins[n_bins], max_count = 0;
     for (i=0; i < n_bins; i++) count_bins[i] = 0;
@@ -54,46 +52,41 @@ int main(int argc, char const *argv[]) {
     //  ---- Starting simulations ---
     double max = 0, min = -1, avg=0;
     double call_time;
+    double c = (1/lambda)/100;
+
+    // printf("%lf\n", c);
 
     for (i = 0; i < n_simulations; i++) {
-
-        //  ---- Update times ---
-        last_event_time = current_time;
-        current_time = lista_eventos->tempo;
-
-        //  ---- Consume event on the list ----
-        lista_eventos = remover(lista_eventos);
-
-        //  ---- Random generate time for the next call ----
         int tmp;
+        call_time = 0;
+
+        // printf("%d\n", i);
+
         do {
+            call_time += c;
             u = (double)((unsigned)rand() + 1U)/((unsigned)RAND_MAX + 1U);
-            c = -log(u) / lambda;
-        } while((int)(c / delta) > n_bins-1);
+        } while(u > c*lambda);
 
         //  ---- Calculate max, min and average ----
         // min
         if (min = -1)
-            min = c;
-        else if (c < min)
-            min = c;
+            min = call_time;
+        else if (call_time < min)
+            min = call_time;
         // max
-        if (c > max)
-            max = c;
+        if (call_time > max)
+            max = call_time;
 
-        //  ---- Calculate time betwen calls ----
-        call_time = current_time - last_event_time;
-
+        // printf("%lf\n", call_time);
         // avg
         avg = ((avg*i) + call_time) / (i+1);
 
         //  ---- Increment bins on histogram array ----
         tmp = (int)(call_time / delta);
+        if (tmp > n_bins-1) continue;
         count_bins[tmp]++;
         if (count_bins[tmp] > max_count) max_count = count_bins[tmp];
 
-        // ---- Add new event to the list of events ----
-        lista_eventos = adicionar(lista_eventos, 0, current_time + c);
     }
 
     printf("Max: %lf, Min: %lf, Avg: %lf\n", max, min, avg);
