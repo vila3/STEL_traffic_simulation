@@ -22,7 +22,7 @@ int main(int argc, char const *argv[]) {
     lista  * lista_eventos;
 	int tipo_ev, i; double tempo_ev;
     int n_channels = 0, free_channels = 0, n_simulations = 0, event_type;
-    double current_time = 0, last_event_time = 0, c, u, d;
+    double current_time = 0, last_event_time = 0, c, u, d, n_coming_events = 0, n_loss = 0;
 
     //  ---------------------------------------------------
     //  ---- Calculate number of bins to the histogram ----
@@ -77,7 +77,8 @@ int main(int argc, char const *argv[]) {
             //  ---- Random generate time for the next call ----
             u = (double)((unsigned)rand() + 1U)/((unsigned)RAND_MAX + 1U);
             c = -log(u) / (lambda*K);
-            
+
+            n_coming_events++;
             if (free_channels > 0) {
                 do {
                     u = (double)((unsigned)rand() + 1U)/((unsigned)RAND_MAX + 1U);
@@ -96,7 +97,9 @@ int main(int argc, char const *argv[]) {
                 tmp = (int)(d / delta);
                 count_bins[tmp]++;
                 if (count_bins[tmp] > max_count) max_count = count_bins[tmp];
-                printf("tmp: %d\n", tmp);
+                // printf("tmp: %d\n", tmp);
+            } else {
+              n_loss++;
             }
 
             lista_eventos = adicionar(lista_eventos, 0, current_time + c);
@@ -104,11 +107,11 @@ int main(int argc, char const *argv[]) {
             free_channels++;
         }
 
-        imprimir(lista_eventos);
-        printf("Free channels: %d\n", free_channels);
+        // imprimir(lista_eventos);
+        // printf("Free channels: %d\n", free_channels);
     }
 
-    printf("Avg service time: %lf\n", avg_d);
+    printf("Avg service time: %lf\nProbability of blocking (B): %.3lf%%\n", avg_d, ((double)n_loss/n_coming_events)*100);
 
     printhistogram(count_bins, n_bins, max_count);
 
@@ -136,14 +139,14 @@ void printhistogram(int *histogram, int histogram_size, int max_count){
     struct winsize size;
     ioctl(STDOUT_FILENO,TIOCGWINSZ,&size);
 
-    float bar_size = (float)(size.ws_col - 35);
+    float bar_size = (float)(size.ws_col - 30);
     if (bar_size < 50) {
         bar_size = 50.0;
     }
 
     printhbar(size.ws_col);
 	for (i=0; i < histogram_size; i++){
-        printf(" %.5lf - %.5lf ( %6d )|", i * delta, (i+1) * delta, histogram[i]);
+        printf("%6.1lf - %6.1lf ( %6d )|", i * delta, (i+1) * delta, histogram[i]);
 		for (j=0; j < (int)(histogram[i]*(bar_size/max_count)); j++){
 			printf("*");
 		}
