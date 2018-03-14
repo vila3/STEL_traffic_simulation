@@ -9,24 +9,33 @@
 #include <unistd.h>
 #include "lista_ligada.c"
 
+// Defenition of histogram structure
+typedef struct{
+	int n_bins;
+	int *bins;
+	int max_count;
+} histogram;
+
 double delta = 0;
-int n_bins = 0;
 double lambda=0, dm=0;
 int K=0, buffer_size=0;
 
-lista *new_out_event(lista* lista_eventos, double current_time, double *u, double *d);
-void printhistogram(int *histogram, int histogram_size, int max_count);
+lista *new_out_event(lista* lista_eventos, double current_time, double *d, int n_bins);
+void printhistogram(histogram *htg);
 
 int main(int argc, char const *argv[]) {
 
     lista *lista_eventos;
     lista *buffer;
+    histogram *call_times_hst = (histogram *)malloc(sizeof( histogram));
+
 	int tipo_ev, i; double tempo_ev;
     int buffer_free = 0;
     int n_channels = 0, free_channels = 0, n_simulations = 0, event_type, n_delays = 0;
     double current_time = 0, last_event_time = 0, c, u, d, n_coming_events = 0, n_loss = 0, delays_cnt = 0;
 
     //  ---- Initialize events list ----
+    buffer = NULL;
 	lista_eventos = NULL;
     lista_eventos = adicionar(lista_eventos, 0, 0);
 
@@ -67,10 +76,11 @@ int main(int argc, char const *argv[]) {
     if (tmp_n_bins - (int) tmp_n_bins > 0) {
         tmp_n_bins += 1;
     }
-    n_bins = (int)tmp_n_bins;
+    call_times_hst->n_bins = (int)tmp_n_bins;
 
-    int count_bins[n_bins], max_count = 0;
-    for (i=0; i < n_bins; i++) count_bins[i] = 0;
+    call_times_hst->bins = (int *)malloc(sizeof(int) * call_times_hst->n_bins);
+    call_times_hst->max_count = 0;
+    for (i=0; i < call_times_hst->n_bins; i++) (call_times_hst->bins)[i] = 0;
 
     //  ---- Ask and set clients ----
     printf("N clients: ");
@@ -100,12 +110,16 @@ int main(int argc, char const *argv[]) {
 
             //  ---- Random generate time for the next call ----
             u = (double)((unsigned)rand() + 1U)/((unsigned)RAND_MAX + 1U);
-            c = -log(u) / (lambda*(K - (buffer_size - buffer_free)));
+            int active_clients = K - (buffer_size - buffer_free) - (n_channels - free_channels);
+            if (active_clients < 0) {
+                active_clients = 0;
+            }
+            c = -log(u) / (lambda*(active_clients));
 
             n_coming_events++;
             if (free_channels > 0) {
 
-                lista_eventos = new_out_event(lista_eventos, current_time, &u, &d);
+                lista_eventos = new_out_event(lista_eventos, current_time, &d, call_times_hst->n_bins);
                 free_channels--;
 
                 //  ---- Calculate average service time ----
@@ -114,9 +128,11 @@ int main(int argc, char const *argv[]) {
                 //  ---- Increment bins on histogram array ----
                 int tmp;
                 tmp = (int)(d / delta);
-                count_bins[tmp]++;
-                if (count_bins[tmp] > max_count) max_count = count_bins[tmp];
-                // printf("tmp: %d\n", tmp);
+
+                (call_times_hst->bins)[tmp]++;
+                if ((call_times_hst->bins)[tmp] > call_times_hst->max_count)
+                    call_times_hst->max_count = (call_times_hst->bins)[tmp];
+
             } else {
                 if (buffer_free > 0) {
                     buffer = adicionar(buffer, event_type, current_time);
@@ -132,7 +148,19 @@ int main(int argc, char const *argv[]) {
             if (buffer_free < buffer_size) {
                 delays_cnt += current_time - buffer->tempo;
                 buffer = remover(buffer);
-                lista_eventos = new_out_event(lista_eventos, current_time, &u, &d);
+                lista_eventos = new_out_event(lista_eventos, current_time, &d, call_times_hst->n_bins);
+
+                //  ---- Calculate average service time ----
+                avg_d = ((avg_d*i) + d) / (i+1);
+
+                //  ---- Increment bins on histogram array ----
+                int tmp;
+                tmp = (int)(d / delta);
+
+                (call_times_hst->bins)[tmp]++;
+                if ((call_times_hst->bins)[tmp] > call_times_hst->max_count)
+                    call_times_hst->max_count = (call_times_hst->bins)[tmp];
+
                 buffer_free++;
             } else {
                 free_channels++;
@@ -143,20 +171,21 @@ int main(int argc, char const *argv[]) {
         // printf("Free channels: %d\n", free_channels);
     }
 
-    printf("Avg service time: %lf\n", avg_d);
+    printf("\nAvg service time: %lf\n", avg_d);
     printf("Probability of blocking (B): %.3lf%%\n", ((double)n_loss/n_coming_events)*100);
     printf("Probability of customer delay: %.3lf%%\n", ((double)n_delays/n_coming_events)*100);
     printf("Average of customer service delay: %.3lf\n", delays_cnt/n_coming_events);
 
-    printhistogram(count_bins, n_bins, max_count);
+    printhistogram(call_times_hst);
 
     return 0;
 }
 
-lista *new_out_event(lista* lista_eventos, double current_time, double *u, double *d) {
+lista *new_out_event(lista* lista_eventos, double current_time, double *d, int n_bins) {
+    double u;
     do {
-        *u = (double)((unsigned)rand() + 1U)/((unsigned)RAND_MAX + 1U);
-        *d = -dm * log(*u);
+        u = (double)((unsigned)rand() + 1U)/((unsigned)RAND_MAX + 1U);
+        *d = -dm * log(u);
     } while((int)(*d / delta) > n_bins-1);
 
     // ---- Add new out event to the list of events ----
@@ -177,7 +206,7 @@ void printhbar(int size) {
 /**
  * Function to print histogram
  */
-void printhistogram(int *histogram, int histogram_size, int max_count){
+void printhistogram(histogram *htg){
 	int	i, j;
     double val;
 
@@ -190,9 +219,9 @@ void printhistogram(int *histogram, int histogram_size, int max_count){
     }
 
     printhbar(size.ws_col);
-	for (i=0; i < histogram_size; i++){
-        printf("%6.1lf - %6.1lf ( %6d )|", i * delta, (i+1) * delta, histogram[i]);
-		for (j=0; j < (int)(histogram[i]*(bar_size/max_count)); j++){
+	for (i=0; i < htg->n_bins; i++){
+        printf("%6.1lf - %6.1lf ( %6d )|", i * delta, (i+1) * delta, (htg->bins)[i]);
+		for (j=0; j < (int)((htg->bins)[i]*(bar_size/htg->max_count)); j++){
 			printf("*");
 		}
 
